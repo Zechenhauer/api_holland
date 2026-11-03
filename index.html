@@ -17,7 +17,7 @@
             --bg-color: #07090f;
             --card-bg: #111520;
             --card-hover: #1a2030;
-            --accent-color: #D40000; /* Ajax/Oranje Rot als edler Akzent */
+            --accent-color: #D40000;
             --accent-hover: #ff1a1a;
             --text-main: #ffffff;
             --text-muted: #8b949e;
@@ -65,14 +65,13 @@
         .ticker-score { color: #ffffff; font-weight: bold; font-size: 0.9rem; background: #21262d; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border-color); }
         @keyframes ticker-scroll { 0% { transform: translate3d(0, 0, 0); } 100% { transform: translate3d(-50%, 0, 0); } }
 
-        /* Tor-Alarm Banner */
+        /* Tor-Alarm / VAR Banner */
         #goalAlertBanner { display: none; position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, #111520, #261115); border: 2px solid var(--ajax-red); box-shadow: 0 10px 30px rgba(212,0,0,0.4); border-radius: 14px; padding: 18px 24px; z-index: 2000; width: 90%; max-width: 480px; text-align: center; animation: bounce-in 0.5s ease; cursor: pointer; }
         @keyframes bounce-in { 0% { transform: translate(-50%, -30px); opacity: 0; } 100% { transform: translate(-50%, 0); opacity: 1; } }
         .goal-alert-title { font-size: 1.2rem; font-weight: 900; color: var(--ajax-red); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
         .goal-alert-scorer { font-size: 1rem; font-weight: bold; margin-bottom: 8px; color: #fff; }
         .goal-alert-match { font-size: 0.85rem; color: var(--text-muted); border-top: 1px solid var(--border-color); padding-top: 6px; }
 
-        /* Steuerung & Layout */
         .controls { display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 20px; background: var(--card-bg); padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); flex-wrap: wrap; }
         button, select { background: #21262d; color: var(--text-main); border: 1px solid var(--border-color); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.95rem; transition: background 0.2s; }
         button:hover, select:hover { background: #30363d; border-color: var(--ajax-red); }
@@ -87,7 +86,6 @@
         .card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; }
         h2 { font-size: 1.2rem; margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; color: #fff; }
 
-        /* Spiel-Item */
         .match-card-item { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 15px; margin-bottom: 10px; cursor: pointer; transition: background 0.15s; }
         .match-card-item:hover { background: var(--card-hover); }
         .match-main-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.95rem; }
@@ -143,7 +141,7 @@
     </style>
 </head>
 <body>
-    <!-- Live Tor-Alarm Popup -->
+    <!-- Live Tor-Alarm / VAR Popup -->
     <div id="goalAlertBanner" onclick="hideGoalAlert()">
         <div class="goal-alert-title" id="goalAlertTeam">⚽ Doelpunt!</div>
         <div class="goal-alert-scorer" id="goalAlertScorer">Torschütze & Minute</div>
@@ -361,7 +359,7 @@
         }
 
         // ==========================================
-        // SUPABASE PUSH & TOR-ALARM (amsterdam)
+        // SUPABASE PUSH & TOR- / VAR-ALARM (amsterdam)
         // ==========================================
         async function loadSentGoalsCache() {
             try {
@@ -400,6 +398,38 @@
                 });
             } catch (e) {
                 console.error("Fehler beim Push / Record:", e);
+            }
+        }
+
+        // VAR-Rücknahme Funktion für die Eredivisie
+        async function recordVarCorrectionAndNotify(matchId, home, away, homeScore, awayScore) {
+            sentGoalsCache[matchId] = { home: homeScore, away: awayScore };
+
+            let pushTitle = `⚠️ Eredivisie: Doelpunt afgekeurd (VAR)!`;
+            let pushBody = `Das Tor wurde nach Videobeweis zurückgenommen!\nNeuer Spielstand: ${home} - ${away} (${homeScore}:${awayScore})`;
+
+            showVarCorrectionAlert(`${home} : ${away} (${homeScore}:${awayScore})`);
+
+            try {
+                await supabaseClient.from('sent_goals_amsterdam').upsert({
+                    match_id: String(matchId),
+                    home_score: homeScore,
+                    away_score: awayScore,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'match_id' });
+
+                await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+                    method: 'POST',
+                    mode: 'cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        table: 'push_subscriptions_amsterdam',
+                        title: pushTitle,
+                        body: pushBody
+                    })
+                });
+            } catch (e) {
+                console.error("Fehler beim Eredivisie VAR-Push:", e);
             }
         }
 
@@ -467,10 +497,22 @@
         }
 
         function showGoalAlert(teamName, scorerInfo, matchInfo) {
+            const banner = document.getElementById("goalAlertBanner");
+            banner.style.background = "linear-gradient(135deg, #111520, #261115)";
             document.getElementById("goalAlertTeam").textContent = `⚽ Doelpunt voor ${teamName}!`;
             document.getElementById("goalAlertScorer").textContent = scorerInfo;
             document.getElementById("goalAlertMatch").textContent = matchInfo;
-            document.getElementById("goalAlertBanner").style.display = "block";
+            banner.style.display = "block";
+            setTimeout(() => { hideGoalAlert(); }, 10000);
+        }
+
+        function showVarCorrectionAlert(matchInfo) {
+            const banner = document.getElementById("goalAlertBanner");
+            banner.style.background = "linear-gradient(135deg, #36280c, #634d1e)";
+            document.getElementById("goalAlertTeam").textContent = "⚠️ Eredivisie: Doelpunt afgekeurd (VAR)!";
+            document.getElementById("goalAlertScorer").textContent = "Das Tor wurde nach Videobeweis zurückgenommen!";
+            document.getElementById("goalAlertMatch").textContent = `Neuer Spielstand: ${matchInfo}`;
+            banner.style.display = "block";
             setTimeout(() => { hideGoalAlert(); }, 10000);
         }
 
@@ -801,15 +843,18 @@
                         if (!cachedScore) {
                             sentGoalsCache[fixtureId] = { home: goalsHome, away: goalsAway };
                         } else {
+                            // 1. Fall: Normales Tor (Spielstand steigt)
                             if (goalsHome > cachedScore.home || goalsAway > cachedScore.away) {
                                 let scoringTeam = goalsHome > cachedScore.home ? home.name : away.name;
                                 let latestGoal = events.filter(ev => ev.type === 'Goal').pop();
                                 let scorerText = latestGoal ? `${latestGoal.player.name} (${latestGoal.time.elapsed}. min)` : "Doelpunt";
                                 
                                 showGoalAlert(scoringTeam, scorerText, `${home.name} - ${away.name}`);
-                                
-                                // Automatischer Push & Datenbank-Eintrag via Edge Function
                                 recordGoalAndNotify(fixtureId, home.name, away.name, goalsHome, goalsAway, latestGoal ? `⚽ ${latestGoal.player.name} (${latestGoal.time.elapsed}')` : '', scoringTeam);
+                            }
+                            // 2. Fall: VAR-Rücknahme (Spielstand sinkt)
+                            else if (goalsHome < cachedScore.home || goalsAway < cachedScore.away) {
+                                recordVarCorrectionAndNotify(fixtureId, home.name, away.name, goalsHome, goalsAway);
                             }
                         }
 
@@ -969,8 +1014,15 @@
             try {
                 const res = await fetch(`https://v3.football.api-sports.io/standings?league=${leagueId}&season=${season}`, { headers: { "x-apisports-key": apiKey } });
                 const data = await res.json();
+                
                 if(data.response && data.response.length > 0) {
-                    const standings = data.response[0].league.standings[0];
+                    const leagueObj = data.response[0].league;
+                    if (!leagueObj.standings || leagueObj.standings.length === 0) {
+                        container.innerHTML = `<div style="padding: 10px; color: var(--text-muted); text-align: center;">Keine Tabellendaten für diese Saison (${season}) verfügbar.</div>`;
+                        return;
+                    }
+
+                    const standings = leagueObj.standings[0];
                     let html = `<table><tr><th>#</th><th>Team</th><th class="center">Sp</th><th class="center">Tore</th><th class="right">Pkt</th></tr>`;
                     
                     let top3Html = "";
@@ -995,8 +1047,13 @@
                         </tr>`;
                     });
                     container.innerHTML = html + `</table>`;
+                } else {
+                    container.innerHTML = `<div style="padding: 10px; color: #ff3333; text-align: center;">Keine Daten von der API erhalten.</div>`;
                 }
-            } catch(e) {}
+            } catch(e) {
+                console.error("Fehler beim Laden der Tabelle:", e);
+                container.innerHTML = `<div style="padding: 10px; color: #ff3333; text-align: center;">Netzwerkfehler beim Laden der Tabelle.</div>`;
+            }
         }
 
         init();
