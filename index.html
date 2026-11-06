@@ -30,9 +30,12 @@
         .container { width: 100%; max-width: 950px; }
 
         header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid var(--ajax-red); padding-bottom: 12px; }
-        h1 { font-size: 2.2rem; color: #ffffff; margin-bottom: 5px; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+        .header-title-row { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 5px; }
+        .league-logo { width: 55px; height: 35px; object-fit: contain; border-radius: 4px; border: 1px solid var(--border-color); background: #ffffff; padding: 3px; }
+        h1 { font-size: 2.2rem; color: #ffffff; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
         .subtitle { color: var(--text-muted); font-size: 0.95rem; }
-        .author-sub { color: #ffffff; font-size: 0.8rem; font-weight: bold; margin-top: 4px; letter-spacing: 0.5px; text-transform: uppercase; background: var(--ajax-red); display: inline-block; padding: 3px 12px; border-radius: 4px; border: 1px solid #ffffff; }
+        .author-sub { color: #ffffff; font-size: 0.8rem; font-weight: bold; margin-top: 6px; letter-spacing: 0.5px; text-transform: uppercase; background: var(--ajax-red); display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 4px; border: 1px solid #ffffff; }
+        .author-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; border: 1px solid #ffffff; }
 
         .status-box { background: var(--card-bg); border: 1px solid var(--ajax-red); padding: 10px 15px; border-radius: 8px; margin-bottom: 20px; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; }
 
@@ -165,9 +168,15 @@
         </div>
 
         <header>
-            <h1>Eredivisie PRO Dashboard</h1>
+            <div class="header-title-row">
+                <img src="https://media.api-sports.io/football/leagues/88.png" alt="Eredivisie Logo" class="league-logo">
+                <h1>Eredivisie PRO Dashboard</h1>
+            </div>
             <div class="subtitle">Live, Team-Statistiken, Aufstellungen & Bestenlisten (Saison 2026/27)</div>
-            <div class="author-sub">Webmanagement Jürgen Schützendorf</div>
+            <div class="author-sub">
+                <img src="https://lhusylpjnujlqomougmg.supabase.co/storage/v1/object/public/Bilder/Juergen%20Schuetzendorf.png" alt="Jürgen Schützendorf" class="author-avatar">
+                <span>Webmanagement Jürgen Schützendorf</span>
+            </div>
         </header>
 
         <div id="apiStatusBanner" class="status-box">
@@ -282,6 +291,13 @@
         let globalYellowCards = [];
         let sentGoalsCache = {};
         let smartPollingInterval = null;
+        let playerPhotoCache = {};
+
+        function fetchAndCachePlayerPhoto(playerId, fallbackName = '') {
+            if (!playerId) return 'https://media.api-sports.io/football/players/default.png';
+            if (playerPhotoCache[playerId]) return playerPhotoCache[playerId];
+            return `https://media.api-sports.io/football/players/${playerId}.png`;
+        }
 
         function getTeamHighlightClass(name) {
             if (!name) return '';
@@ -358,9 +374,6 @@
             }
         }
 
-        // ==========================================
-        // SUPABASE PUSH & TOR- / VAR-ALARM (amsterdam)
-        // ==========================================
         async function loadSentGoalsCache() {
             try {
                 const { data } = await supabaseClient.from('sent_goals_amsterdam').select('*');
@@ -401,7 +414,6 @@
             }
         }
 
-        // VAR-Rücknahme Funktion für die Eredivisie
         async function recordVarCorrectionAndNotify(matchId, home, away, homeScore, awayScore) {
             sentGoalsCache[matchId] = { home: homeScore, away: awayScore };
 
@@ -519,15 +531,15 @@
         function hideGoalAlert() { document.getElementById("goalAlertBanner").style.display = "none"; }
 
         function manageSmartPolling(hasLiveGames) {
-            if (hasLiveGames && !smartPollingInterval) {
-                smartPollingInterval = setInterval(() => {
-                    if (currentMatchday) loadMatchday(currentMatchday, true);
-                    loadTable();
-                }, 60000);
-            } else if (!hasLiveGames && smartPollingInterval) {
+            const intervalTime = hasLiveGames ? 60000 : 180000;
+            if (smartPollingInterval) {
                 clearInterval(smartPollingInterval);
                 smartPollingInterval = null;
             }
+            smartPollingInterval = setInterval(() => {
+                if (currentMatchday) loadMatchday(currentMatchday, true);
+                loadTable();
+            }, intervalTime);
         }
 
         async function loadTopScorers() {
@@ -540,11 +552,17 @@
                     let html = "";
                     for(let i = 0; i < Math.min(3, globalTopScorers.length); i++) {
                         let p = globalTopScorers[i];
+                        if (p.player.id && p.player.photo) playerPhotoCache[p.player.id] = p.player.photo;
+                        let pPhoto = fetchAndCachePlayerPhoto(p.player.id);
                         let goals = p.statistics[0].goals.total ?? 0;
                         let teamName = p.statistics[0].team.name;
                         let highlightClass = getTeamHighlightClass(teamName);
                         html += `<div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; padding:3px 0; border-bottom:1px solid var(--border-color);" class="${highlightClass}">
-                            <span><b>${i+1}.</b> ${p.player.name} <span style="color:var(--text-muted); font-size:0.75rem;">(${teamName})</span></span>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <b>${i+1}.</b>
+                                <img src="${pPhoto}" style="width:20px; height:20px; border-radius:50%; object-fit:cover;" onerror="this.src='https://media.api-sports.io/football/players/default.png'">
+                                <span>${p.player.name} <span style="color:var(--text-muted); font-size:0.75rem;">(${teamName})</span></span>
+                            </div>
                             <span style="background:#21262d; padding:1px 6px; border-radius:4px; font-weight:bold; color:var(--ajax-red);">${goals} Tore</span>
                         </div>`;
                     }
@@ -563,11 +581,17 @@
                     let html = "";
                     for(let i = 0; i < Math.min(3, globalTopAssists.length); i++) {
                         let p = globalTopAssists[i];
+                        if (p.player.id && p.player.photo) playerPhotoCache[p.player.id] = p.player.photo;
+                        let pPhoto = fetchAndCachePlayerPhoto(p.player.id);
                         let assists = p.statistics[0].goals.assists ?? 0;
                         let teamName = p.statistics[0].team.name;
                         let highlightClass = getTeamHighlightClass(teamName);
                         html += `<div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; padding:3px 0; border-bottom:1px solid var(--border-color);" class="${highlightClass}">
-                            <span><b>${i+1}.</b> ${p.player.name} <span style="color:var(--text-muted); font-size:0.75rem;">(${teamName})</span></span>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <b>${i+1}.</b>
+                                <img src="${pPhoto}" style="width:20px; height:20px; border-radius:50%; object-fit:cover;" onerror="this.src='https://media.api-sports.io/football/players/default.png'">
+                                <span>${p.player.name} <span style="color:var(--text-muted); font-size:0.75rem;">(${teamName})</span></span>
+                            </div>
                             <span style="background:#21262d; padding:1px 6px; border-radius:4px; font-weight:bold; color:var(--ajax-red);">${assists} Assists</span>
                         </div>`;
                     }
@@ -586,11 +610,17 @@
                     let html = "";
                     for(let i = 0; i < Math.min(3, globalYellowCards.length); i++) {
                         let p = globalYellowCards[i];
+                        if (p.player.id && p.player.photo) playerPhotoCache[p.player.id] = p.player.photo;
+                        let pPhoto = fetchAndCachePlayerPhoto(p.player.id);
                         let cards = p.statistics[0].cards.yellow ?? 0;
                         let teamName = p.statistics[0].team.name;
                         let highlightClass = getTeamHighlightClass(teamName);
                         html += `<div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; padding:3px 0; border-bottom:1px solid var(--border-color);" class="${highlightClass}">
-                            <span><b>${i+1}.</b> ${p.player.name} <span style="color:var(--text-muted); font-size:0.75rem;">(${teamName})</span></span>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <b>${i+1}.</b>
+                                <img src="${pPhoto}" style="width:20px; height:20px; border-radius:50%; object-fit:cover;" onerror="this.src='https://media.api-sports.io/football/players/default.png'">
+                                <span>${p.player.name} <span style="color:var(--text-muted); font-size:0.75rem;">(${teamName})</span></span>
+                            </div>
                             <span style="background:#21262d; padding:1px 6px; border-radius:4px; font-weight:bold; color:#f0883e;">🟨 ${cards}</span>
                         </div>`;
                     }
@@ -696,6 +726,7 @@
                     const players = squadData.response[0].players;
                     let grouped = { Goalkeeper: [], Defender: [], Midfielder: [], Attacker: [] };
                     players.forEach(p => {
+                        if (p.id && p.photo) playerPhotoCache[p.id] = p.photo;
                         if (grouped[p.position]) grouped[p.position].push(p);
                     });
 
@@ -707,7 +738,8 @@
                             html += `<div style="font-size:0.85rem; font-weight:bold; color:var(--text-muted); margin-top:8px;">${posNames[pos]}</div>`;
                             html += `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; margin-bottom:10px;">`;
                             grouped[pos].forEach(pl => {
-                                html += `<span style="background:#161b22; border:1px solid var(--border-color); padding:3px 8px; border-radius:4px; font-size:0.8rem;">#${pl.number || '-'} ${pl.name} (${pl.age || '-'} J.)</span>`;
+                                let plPhoto = fetchAndCachePlayerPhoto(pl.id);
+                                html += `<span style="background:#161b22; border:1px solid var(--border-color); padding:3px 8px; border-radius:4px; font-size:0.8rem; display:inline-flex; align-items:center; gap:6px;"><img src="${plPhoto}" style="width:18px; height:18px; border-radius:50%; object-fit:cover;" onerror="this.src='https://media.api-sports.io/football/players/default.png'">#${pl.number || '-'} ${pl.name} (${pl.age || '-'} J.)</span>`;
                             });
                             html += `</div>`;
                         }
@@ -735,8 +767,10 @@
             let html = `<table><tr><th>#</th><th>Spieler</th><th>Team</th><th class="center">Tore</th><th class="center">Elfm.</th></tr>`;
             globalTopScorers.forEach((p, index) => {
                 let stats = p.statistics[0];
+                if (p.player.id && p.player.photo) playerPhotoCache[p.player.id] = p.player.photo;
+                let pPhoto = fetchAndCachePlayerPhoto(p.player.id);
                 let rowClass = getTeamRowClass(stats.team.name);
-                html += `<tr class="${rowClass}"><td><b>${index+1}</b></td><td><div style="display:flex; align-items:center; gap:6px;"><img src="${p.player.photo}" style="width:20px; height:20px; border-radius:50%; object-fit:cover;"><span>${p.player.name}</span></div></td><td><div style="display:flex; align-items:center; gap:6px;"><img src="${stats.team.logo}" style="width:16px; height:16px; object-fit:contain;"><span>${stats.team.name}</span></div></td><td class="center"><b>${stats.goals.total ?? 0}</b></td><td class="center">${stats.goals.penalty ?? 0}</td></tr>`;
+                html += `<tr class="${rowClass}"><td><b>${index+1}</b></td><td><div style="display:flex; align-items:center; gap:6px;"><img src="${pPhoto}" style="width:20px; height:20px; border-radius:50%; object-fit:cover;" onerror="this.src='https://media.api-sports.io/football/players/default.png'"><span>${p.player.name}</span></div></td><td><div style="display:flex; align-items:center; gap:6px;"><img src="${stats.team.logo}" style="width:16px; height:16px; object-fit:contain;"><span>${stats.team.name}</span></div></td><td class="center"><b>${stats.goals.total ?? 0}</b></td><td class="center">${stats.goals.penalty ?? 0}</td></tr>`;
             });
             document.getElementById("fullScorersContainer").innerHTML = html + `</table>`;
         }
@@ -746,8 +780,10 @@
             let html = `<table><tr><th>#</th><th>Spieler</th><th>Team</th><th class="center">Vorlagen</th></tr>`;
             globalTopAssists.forEach((p, index) => {
                 let stats = p.statistics[0];
+                if (p.player.id && p.player.photo) playerPhotoCache[p.player.id] = p.player.photo;
+                let pPhoto = fetchAndCachePlayerPhoto(p.player.id);
                 let rowClass = getTeamRowClass(stats.team.name);
-                html += `<tr class="${rowClass}"><td><b>${index+1}</b></td><td><div style="display:flex; align-items:center; gap:6px;"><img src="${p.player.photo}" style="width:20px; height:20px; border-radius:50%; object-fit:cover;"><span>${p.player.name}</span></div></td><td><div style="display:flex; align-items:center; gap:6px;"><img src="${stats.team.logo}" style="width:16px; height:16px; object-fit:contain;"><span>${stats.team.name}</span></div></td><td class="center"><b>${stats.goals.assists ?? 0}</b></td></tr>`;
+                html += `<tr class="${rowClass}"><td><b>${index+1}</b></td><td><div style="display:flex; align-items:center; gap:6px;"><img src="${pPhoto}" style="width:20px; height:20px; border-radius:50%; object-fit:cover;" onerror="this.src='https://media.api-sports.io/football/players/default.png'"><span>${p.player.name}</span></div></td><td><div style="display:flex; align-items:center; gap:6px;"><img src="${stats.team.logo}" style="width:16px; height:16px; object-fit:contain;"><span>${stats.team.name}</span></div></td><td class="center"><b>${stats.goals.assists ?? 0}</b></td></tr>`;
             });
             document.getElementById("fullAssistsContainer").innerHTML = html + `</table>`;
         }
@@ -757,8 +793,10 @@
             let html = `<table><tr><th>#</th><th>Spieler</th><th>Team</th><th class="center">Gelb</th><th class="center">Gelb-Rot</th><th class="center">Rot</th></tr>`;
             globalYellowCards.forEach((p, index) => {
                 let stats = p.statistics[0];
+                if (p.player.id && p.player.photo) playerPhotoCache[p.player.id] = p.player.photo;
+                let pPhoto = fetchAndCachePlayerPhoto(p.player.id);
                 let rowClass = getTeamRowClass(stats.team.name);
-                html += `<tr class="${rowClass}"><td><b>${index+1}</b></td><td><span>${p.player.name}</span></td><td><span>${stats.team.name}</span></td><td class="center"><b>${stats.cards.yellow ?? 0}</b></td><td class="center">${stats.cards.yellowred ?? 0}</td><td class="center">${stats.cards.red ?? 0}</td></tr>`;
+                html += `<tr class="${rowClass}"><td><b>${index+1}</b></td><td><div style="display:flex; align-items:center; gap:6px;"><img src="${pPhoto}" style="width:20px; height:20px; border-radius:50%; object-fit:cover;" onerror="this.src='https://media.api-sports.io/football/players/default.png'"><span>${p.player.name}</span></div></td><td><span>${stats.team.name}</span></td><td class="center"><b>${stats.cards.yellow ?? 0}</b></td><td class="center">${stats.cards.yellowred ?? 0}</td><td class="center">${stats.cards.red ?? 0}</td></tr>`;
             });
             document.getElementById("fullYellowCardsContainer").innerHTML = html + `</table>`;
         }
@@ -843,7 +881,6 @@
                         if (!cachedScore) {
                             sentGoalsCache[fixtureId] = { home: goalsHome, away: goalsAway };
                         } else {
-                            // 1. Fall: Normales Tor (Spielstand steigt)
                             if (goalsHome > cachedScore.home || goalsAway > cachedScore.away) {
                                 let scoringTeam = goalsHome > cachedScore.home ? home.name : away.name;
                                 let latestGoal = events.filter(ev => ev.type === 'Goal').pop();
@@ -852,7 +889,6 @@
                                 showGoalAlert(scoringTeam, scorerText, `${home.name} - ${away.name}`);
                                 recordGoalAndNotify(fixtureId, home.name, away.name, goalsHome, goalsAway, latestGoal ? `⚽ ${latestGoal.player.name} (${latestGoal.time.elapsed}')` : '', scoringTeam);
                             }
-                            // 2. Fall: VAR-Rücknahme (Spielstand sinkt)
                             else if (goalsHome < cachedScore.home || goalsAway < cachedScore.away) {
                                 recordVarCorrectionAndNotify(fixtureId, home.name, away.name, goalsHome, goalsAway);
                             }
@@ -877,7 +913,11 @@
                             let cH = 0, cA = 0;
                             goalEvents.forEach(ge => {
                                 if (ge.team.id === home.id) cH++; else cA++;
-                                scorersHtml += `<div class="scorer-tag"><span class="scorer-score-badge">${cH}:${cA}</span><span>⚽ ${ge.time.elapsed}' ${ge.player.name}</span></div>`;
+                                if (ge.player && ge.player.id && ge.player.photo) {
+                                    playerPhotoCache[ge.player.id] = ge.player.photo;
+                                }
+                                let pPhoto = fetchAndCachePlayerPhoto(ge.player.id);
+                                scorersHtml += `<div class="scorer-tag"><span class="scorer-score-badge">${cH}:${cA}</span><img src="${pPhoto}" style="width:18px; height:18px; border-radius:50%; object-fit:cover;" onerror="this.src='https://media.api-sports.io/football/players/default.png'"><span>⚽ ${ge.time.elapsed}' ${ge.player.name}</span></div>`;
                             });
                             scorersHtml += `</div>`;
                         }
@@ -935,9 +975,13 @@
                     if (match.events) {
                         let hG = 0, aG = 0;
                         match.events.forEach(ev => {
+                            if (ev.player && ev.player.id && ev.player.photo) {
+                                playerPhotoCache[ev.player.id] = ev.player.photo;
+                            }
                             if (ev.type === 'Goal') {
                                 if (ev.team.id === home.id) hG++; else aG++;
-                                evHtml += `<div class="event-item"><div style="display:flex; align-items:center; gap:10px;"><span class="event-time">${ev.time.elapsed}'</span><span>⚽ <b>${ev.player.name}</b> (${ev.team.name})</span></div><span class="event-score">${hG}:${aG}</span></div>`;
+                                let pPhoto = fetchAndCachePlayerPhoto(ev.player.id);
+                                evHtml += `<div class="event-item"><div style="display:flex; align-items:center; gap:10px;"><span class="event-time">${ev.time.elapsed}'</span><img src="${pPhoto}" style="width:20px; height:20px; border-radius:50%; object-fit:cover;" onerror="this.src='https://media.api-sports.io/football/players/default.png'"><span>⚽ <b>${ev.player.name}</b> (${ev.team.name})</span></div><span class="event-score">${hG}:${aG}</span></div>`;
                             }
                         });
                     }
@@ -949,13 +993,42 @@
                         let lAway = lineupsData.response[1];
 
                         function formatTeamDetails(lineupObj, teamObj, coachName) {
-                            let start11 = lineupObj.startXI.map(p => `${p.player.name} (${p.player.pos})`).join(", ");
-                            let subs = lineupObj.substitutes.map(p => `${p.player.name}`).join(", ");
+                            if (lineupObj.startXI) {
+                                lineupObj.startXI.forEach(item => {
+                                    if (item.player && item.player.id && item.player.photo) {
+                                        playerPhotoCache[item.player.id] = item.player.photo;
+                                    }
+                                });
+                            }
+                            if (lineupObj.substitutes) {
+                                lineupObj.substitutes.forEach(item => {
+                                    if (item.player && item.player.id && item.player.photo) {
+                                        playerPhotoCache[item.player.id] = item.player.photo;
+                                    }
+                                });
+                            }
+
+                            let start11 = lineupObj.startXI.map(p => {
+                                let pPhoto = fetchAndCachePlayerPhoto(p.player.id);
+                                return `<span style="display:inline-flex; align-items:center; gap:4px; margin:2px;"><img src="${pPhoto}" style="width:16px; height:16px; border-radius:50%; object-fit:cover;" onerror="this.src='https://media.api-sports.io/football/players/default.png'">${p.player.name} (${p.player.pos})</span>`;
+                            }).join(", ");
+
+                            let subs = lineupObj.substitutes.map(p => {
+                                let pPhoto = fetchAndCachePlayerPhoto(p.player.id);
+                                return `<span style="display:inline-flex; align-items:center; gap:4px; margin:2px;"><img src="${pPhoto}" style="width:16px; height:16px; border-radius:50%; object-fit:cover;" onerror="this.src='https://media.api-sports.io/football/players/default.png'">${p.player.name}</span>`;
+                            }).join(", ");
+
                             let teamEvents = (match.events || []).filter(ev => ev.team.id === teamObj.id);
-                            let subsEvents = teamEvents.filter(ev => ev.type === 'subst').map(ev => `<div style="font-size:0.8rem; color:var(--text-muted);">🔄 ${ev.time.elapsed}' In: ${ev.player.name} | Uit: ${ev.assist.name}</div>`).join("");
+                            let subsEvents = teamEvents.filter(ev => ev.type === 'subst').map(ev => {
+                                let inPhoto = fetchAndCachePlayerPhoto(ev.player.id);
+                                let outPhoto = fetchAndCachePlayerPhoto(ev.assist.id);
+                                return `<div style="font-size:0.8rem; color:var(--text-muted); display:flex; align-items:center; gap:6px;">🔄 ${ev.time.elapsed}' <img src="${inPhoto}" style="width:16px; height:16px; border-radius:50%; object-fit:cover;" onerror="this.src='https://media.api-sports.io/football/players/default.png'">In: ${ev.player.name} | <img src="${outPhoto}" style="width:16px; height:16px; border-radius:50%; object-fit:cover;" onerror="this.src='https://media.api-sports.io/football/players/default.png'">Uit: ${ev.assist.name}</div>`;
+                            }).join("");
+
                             let cardsEvents = teamEvents.filter(ev => ev.type === 'Card').map(ev => {
                                 let cIcon = ev.detail === 'Red Card' ? '🟥' : (ev.detail === 'Yellow Red Card' ? '🟨🟥' : '🟨');
-                                return `<div style="font-size:0.8rem; color:var(--text-muted);">${cIcon} ${ev.time.elapsed}' ${ev.player.name}</div>`;
+                                let pPhoto = fetchAndCachePlayerPhoto(ev.player.id);
+                                return `<div style="font-size:0.8rem; color:var(--text-muted); display:flex; align-items:center; gap:6px;">${cIcon} ${ev.time.elapsed}' <img src="${pPhoto}" style="width:16px; height:16px; border-radius:50%; object-fit:cover;" onerror="this.src='https://media.api-sports.io/football/players/default.png'">${ev.player.name}</div>`;
                             }).join("");
 
                             let finalCoach = coachName || (lineupObj.coach && lineupObj.coach.name) || '-';
